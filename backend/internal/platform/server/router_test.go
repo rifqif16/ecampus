@@ -16,7 +16,7 @@ import (
 	"github.com/rifqif16/ecampus/backend/internal/platform/server"
 )
 
-func newRouter(t *testing.T, checks ...health.Check) http.Handler {
+func newRouterWithLogs(t *testing.T, checks ...health.Check) (http.Handler, *bytes.Buffer) {
 	t.Helper()
 
 	var logs bytes.Buffer
@@ -24,10 +24,18 @@ func newRouter(t *testing.T, checks ...health.Check) http.Handler {
 	if err != nil {
 		t.Fatalf("logger: %v", err)
 	}
-	return server.NewRouter(server.Deps{
+	handler := server.NewRouter(server.Deps{
 		Log:    log,
 		Health: health.NewChecker(log, time.Second, checks...),
 	})
+	return handler, &logs
+}
+
+func newRouter(t *testing.T, checks ...health.Check) http.Handler {
+	t.Helper()
+
+	handler, _ := newRouterWithLogs(t, checks...)
+	return handler
 }
 
 func do(t *testing.T, h http.Handler, method, path string) *httptest.ResponseRecorder {
@@ -130,6 +138,56 @@ func TestRouter_WrongMethodUsesErrorEnvelope(t *testing.T) {
 	rec := do(t, newRouter(t), http.MethodPost, "/healthz")
 
 	assertRouteNotFound(t, rec)
+}
+
+func accessLogEntries(t *testing.T, logs *bytes.Buffer) []map[string]any {
+	t.Helper()
+
+	var entries []map[string]any
+	for _, raw := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(raw), &entry); err != nil {
+			t.Fatalf("invalid log line %q: %v", raw, err)
+		}
+		if entry["msg"] == "http request" {
+			entries = append(entries, entry)
+		}
+	}
+	return entries
+}
+
+func TestRouter_AccessLogUsesRoutePatternAndClientIP(t *testing.T) {
+	router, logs := newRouterWithLogs(t)
+	req := httptest.NewRequest(http.MethodGet, "/healthz?probe=1", nil)
+	req.Header.Set("X-Client-IP", "203.0.113.7")
+
+	router.ServeHTTP(httptest.NewRecorder(), req)
+
+	entries := accessLogEntries(t, logs)
+	if len(entries) != 1 {
+		t.Fatalf("got %d access log entries, want 1", len(entries))
+	}
+	entry := entries[0]
+	if entry["route"] != "/healthz" || entry["client_ip"] != "203.0.113.7" || entry["status"] != float64(200) {
+		t.Fatalf("unexpected entry: %v", entry)
+	}
+	if entry["level"] != "DEBUG" {
+		t.Fatalf("probe level = %v, want DEBUG", entry["level"])
+	}
+}
+
+func TestRouter_AccessLogLabelsUnknownPathsUnmatched(t *testing.T) {
+	router, logs := newRouterWithLogs(t)
+
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/secret-id-123", nil))
+
+	entries := accessLogEntries(t, logs)
+	if len(entries) != 1 || entries[0]["route"] != "unmatched" || entries[0]["status"] != float64(404) {
+		t.Fatalf("entries = %v", entries)
+	}
+	if strings.Contains(logs.String(), "secret-id-123") {
+		t.Fatalf("log leaks raw path: %s", logs.String())
+	}
 }
 
 func assertRouteNotFound(t *testing.T, rec *httptest.ResponseRecorder) {
