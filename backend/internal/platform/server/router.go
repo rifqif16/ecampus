@@ -17,6 +17,8 @@ var (
 	errMalformedRequest = apperr.Malformed("VALIDATION_ERROR", "Permintaan tidak valid.")
 )
 
+var quietRoutes = []string{"/healthz", "/readyz"}
+
 type Deps struct {
 	Log    *slog.Logger
 	Health *health.Checker
@@ -28,6 +30,8 @@ func NewRouter(deps Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(httpx.RequestIDMiddleware)
 	r.Use(httpx.Recover(errWriter))
+	r.Use(httpx.ClientIPMiddleware(httpx.ClientIPHeader))
+	r.Use(httpx.AccessLog(deps.Log, chiRoutePattern, quietRoutes...))
 	r.NotFound(routeNotFound(errWriter))
 	r.MethodNotAllowed(routeNotFound(errWriter))
 
@@ -44,6 +48,13 @@ func NewRouter(deps Deps) http.Handler {
 		BaseRouter:       r,
 		ErrorHandlerFunc: malformedRequest(errWriter),
 	})
+}
+
+func chiRoutePattern(r *http.Request) string {
+	if rc := chi.RouteContext(r.Context()); rc != nil {
+		return rc.RoutePattern()
+	}
+	return ""
 }
 
 func routeNotFound(ew *httpx.ErrorWriter) http.HandlerFunc {
