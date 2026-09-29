@@ -72,7 +72,7 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 
 	handler := server.NewRouter(server.Deps{
 		Log:    log,
-		Health: health.NewHandler(log, 0, health.PingCheck("database", pool)),
+		Health: health.NewChecker(log, 0, health.PingCheck("database", pool)),
 	})
 
 	ln, err := net.Listen("tcp", cfg.HTTPAddr)

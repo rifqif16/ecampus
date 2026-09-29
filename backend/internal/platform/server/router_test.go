@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,7 +26,7 @@ func newRouter(t *testing.T, checks ...health.Check) http.Handler {
 	}
 	return server.NewRouter(server.Deps{
 		Log:    log,
-		Health: health.NewHandler(log, time.Second, checks...),
+		Health: health.NewChecker(log, time.Second, checks...),
 	})
 }
 
@@ -37,7 +38,15 @@ func do(t *testing.T, h http.Handler, method, path string) *httptest.ResponseRec
 	return rec
 }
 
-func TestRouter_Healthz(t *testing.T) {
+func passing(name string) health.Check {
+	return health.Check{Name: name, Run: func(context.Context) error { return nil }}
+}
+
+func failing(name string) health.Check {
+	return health.Check{Name: name, Run: func(context.Context) error { return errors.New("secret-host down") }}
+}
+
+func TestRouter_HealthzShapeAndHeaders(t *testing.T) {
 	rec := do(t, newRouter(t), http.MethodGet, "/healthz")
 
 	if rec.Code != http.StatusOK {
@@ -46,17 +55,68 @@ func TestRouter_Healthz(t *testing.T) {
 	if rec.Header().Get("X-Request-ID") == "" {
 		t.Fatal("X-Request-ID header missing")
 	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Fatalf("content-type = %q", ct)
+	}
+	if got := strings.TrimSpace(rec.Body.String()); got != `{"data":{"status":"ok"}}` {
+		t.Fatalf("body = %s", got)
+	}
 }
 
-func TestRouter_ReadyzReflectsChecks(t *testing.T) {
-	failing := health.Check{Name: "database", Run: func(context.Context) error { return errors.New("down") }}
-	passing := health.Check{Name: "database", Run: func(context.Context) error { return nil }}
+func TestRouter_HealthzIgnoresFailingDependencies(t *testing.T) {
+	rec := do(t, newRouter(t, failing("database")), http.MethodGet, "/healthz")
 
-	if rec := do(t, newRouter(t, passing), http.MethodGet, "/readyz"); rec.Code != http.StatusOK {
-		t.Fatalf("passing readyz status = %d, want 200", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("liveness status = %d, want 200 even when a dependency is down", rec.Code)
 	}
-	if rec := do(t, newRouter(t, failing), http.MethodGet, "/readyz"); rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("failing readyz status = %d, want 503", rec.Code)
+}
+
+type readyzBody struct {
+	Data struct {
+		Status string            `json:"status"`
+		Checks map[string]string `json:"checks"`
+	} `json:"data"`
+}
+
+func decodeReadyz(t *testing.T, rec *httptest.ResponseRecorder) readyzBody {
+	t.Helper()
+
+	var body readyzBody
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v (%q)", err, rec.Body.String())
+	}
+	return body
+}
+
+func TestRouter_ReadyzWhenAllChecksPass(t *testing.T) {
+	rec := do(t, newRouter(t, passing("database")), http.MethodGet, "/readyz")
+
+	body := decodeReadyz(t, rec)
+	if rec.Code != http.StatusOK || body.Data.Status != "ok" || body.Data.Checks["database"] != "ok" {
+		t.Fatalf("status=%d body=%+v", rec.Code, body)
+	}
+}
+
+func TestRouter_ReadyzWhenCheckFailsDoesNotLeakCause(t *testing.T) {
+	rec := do(t, newRouter(t, failing("database"), passing("storage")), http.MethodGet, "/readyz")
+
+	body := decodeReadyz(t, rec)
+	if rec.Code != http.StatusServiceUnavailable || body.Data.Status != "unavailable" {
+		t.Fatalf("status=%d body=%+v", rec.Code, body)
+	}
+	if body.Data.Checks["database"] != "fail" || body.Data.Checks["storage"] != "ok" {
+		t.Fatalf("checks = %v", body.Data.Checks)
+	}
+	if strings.Contains(rec.Body.String(), "secret-host") {
+		t.Fatalf("response leaks cause: %s", rec.Body.String())
+	}
+}
+
+func TestRouter_ReadyzWithNoChecksIsReady(t *testing.T) {
+	rec := do(t, newRouter(t), http.MethodGet, "/readyz")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 }
 
