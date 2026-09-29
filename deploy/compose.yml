@@ -1,0 +1,26 @@
+name: ecampus
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      # Loopback only: dev database must not be reachable from the network.
+      - "127.0.0.1:${POSTGRES_PORT}:5432"
+    volumes:
+      # PostgreSQL 18+ image: mount /var/lib/postgresql, not /var/lib/postgresql/data.
+      - postgres_data:/var/lib/postgresql
+    shm_size: 128mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  postgres_data:
