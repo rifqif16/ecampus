@@ -1,0 +1,49 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Go
+backend/bin/
+backend/tmp/
+*.test
+*.out
+coverage.out
+
+# Node / web
+node_modules/
+web/dist/
+web/coverage/
+web/playwright-report/
+web/test-results/
+*.tsbuildinfo
+
+# Flutter / Dart
+mobile/.dart_tool/
+mobile/build/
+mobile/.flutter-plugins*
+mobile/.pub-cache/
+mobile/android/local.properties
+mobile/ios/Pods/
+
+# Runtime data
+/data/
+/storage/
+*.log
+
+# Performance artifacts (raw output)
+perf/results/
+perf/*.pprof
