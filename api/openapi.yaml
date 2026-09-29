@@ -1,0 +1,132 @@
+openapi: 3.0.3
+info:
+  title: E-Campus API
+  version: 0.1.0
+  description: |
+    Spec-first contract shared by the Go backend, the React web app and the
+    Flutter mobile app. Generated code is committed and guarded by a CI drift
+    check.
+
+    Conventions:
+    - Paths are written in full (API operations live under `/api/v1`, probes
+      and the public verification page live at the root) so the generated
+      router mounts at `/` without a base URL.
+    - Every operation MUST declare `x-permission`: a permission key
+      (`resource.action`) or one of `public`, `authenticated`, `system`,
+      `signed-url`. CI fails otherwise.
+    - Success envelope: `{ "data": ..., "meta": ... }`. Error envelope:
+      `{ "error": { category, code, message, details, request_id } }`.
+servers:
+  - url: /
+tags:
+  - name: internal
+    description: Operational probes. Not published through the reverse proxy.
+paths:
+  /healthz:
+    get:
+      operationId: Liveness
+      tags: [internal]
+      summary: Liveness probe
+      description: Proves the process is running. Never touches dependencies.
+      x-permission: public
+      responses:
+        "200":
+          description: Process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LivenessResponse"
+  /readyz:
+    get:
+      operationId: Readiness
+      tags: [internal]
+      summary: Readiness probe
+      description: Reports whether the instance can serve traffic.
+      x-permission: public
+      responses:
+        "200":
+          description: All readiness checks passed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+        "503":
+          description: At least one readiness check failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+components:
+  schemas:
+    LivenessStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+    LivenessResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/LivenessStatus"
+    ReadinessStatus:
+      type: object
+      required: [status, checks]
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+        checks:
+          type: object
+          description: Per-check result, "ok" or "fail".
+          additionalProperties:
+            type: string
+    ReadinessResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/ReadinessStatus"
+    ErrorCategory:
+      type: string
+      enum:
+        - VALIDATION_ERROR
+        - UNAUTHORIZED
+        - FORBIDDEN
+        - NOT_FOUND
+        - CONFLICT
+        - RATE_LIMITED
+        - BUSINESS_RULE_VIOLATION
+        - INTERNAL_ERROR
+    ErrorDetail:
+      type: object
+      required: [field, reason]
+      properties:
+        field:
+          type: string
+        reason:
+          type: string
+    ErrorPayload:
+      type: object
+      required: [category, code, message, request_id]
+      properties:
+        category:
+          $ref: "#/components/schemas/ErrorCategory"
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            $ref: "#/components/schemas/ErrorDetail"
+        request_id:
+          type: string
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorPayload"
