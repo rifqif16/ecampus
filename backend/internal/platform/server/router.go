@@ -19,8 +19,10 @@ var (
 )
 
 const (
-	requestTimeout = 10 * time.Second
-	maxBodyBytes   = 1 << 20
+	requestTimeout   = 10 * time.Second
+	maxBodyBytes     = 1 << 20
+	apiRateLimit     = 300
+	apiRateLimitSpan = time.Minute
 )
 
 var quietRoutes = []string{"/healthz", "/readyz"}
@@ -39,6 +41,7 @@ func NewRouter(deps Deps) http.Handler {
 	r.Use(httpx.ClientIPMiddleware(httpx.ClientIPHeader))
 	r.Use(httpx.AccessLog(deps.Log, chiRoutePattern, quietRoutes...))
 	r.Use(httpx.Timeout(requestTimeout))
+	r.Use(httpx.RateLimitByIP(errWriter, apiRateLimit, apiRateLimitSpan, quietRoutes...))
 	r.Use(httpx.MaxBodyBytes(errWriter, maxBodyBytes))
 	r.NotFound(routeNotFound(errWriter))
 	r.MethodNotAllowed(routeNotFound(errWriter))
