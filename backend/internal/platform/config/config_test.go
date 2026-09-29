@@ -22,23 +22,23 @@ func TestLoad(t *testing.T) {
 	}{
 		{
 			name: "all values provided",
-			env:  map[string]string{"DATABASE_URL": dbURL, "HTTP_ADDR": ":9000"},
-			want: config.Config{HTTPAddr: ":9000", DatabaseURL: dbURL},
+			env:  map[string]string{"DATABASE_URL": dbURL, "HTTP_ADDR": ":9000", "LOG_LEVEL": "debug"},
+			want: config.Config{HTTPAddr: ":9000", DatabaseURL: dbURL, LogLevel: "debug"},
 		},
 		{
-			name: "http addr defaults when unset",
+			name: "optional values default when unset",
 			env:  map[string]string{"DATABASE_URL": dbURL},
-			want: config.Config{HTTPAddr: ":8080", DatabaseURL: dbURL},
+			want: config.Config{HTTPAddr: ":8080", DatabaseURL: dbURL, LogLevel: "info"},
 		},
 		{
-			name: "http addr defaults when blank",
-			env:  map[string]string{"DATABASE_URL": dbURL, "HTTP_ADDR": "   "},
-			want: config.Config{HTTPAddr: ":8080", DatabaseURL: dbURL},
+			name: "optional values default when blank",
+			env:  map[string]string{"DATABASE_URL": dbURL, "HTTP_ADDR": "   ", "LOG_LEVEL": " "},
+			want: config.Config{HTTPAddr: ":8080", DatabaseURL: dbURL, LogLevel: "info"},
 		},
 		{
 			name: "values are trimmed",
-			env:  map[string]string{"DATABASE_URL": "  " + dbURL + "  ", "HTTP_ADDR": " :9000 "},
-			want: config.Config{HTTPAddr: ":9000", DatabaseURL: dbURL},
+			env:  map[string]string{"DATABASE_URL": "  " + dbURL + "  ", "HTTP_ADDR": " :9000 ", "LOG_LEVEL": " warn "},
+			want: config.Config{HTTPAddr: ":9000", DatabaseURL: dbURL, LogLevel: "warn"},
 		},
 		{
 			name:    "missing database url",
