@@ -18,19 +18,24 @@ const (
 	CategoryInternal     Category = "INTERNAL_ERROR"
 )
 
+const (
+	CodePayloadTooLarge      = "PAYLOAD_TOO_LARGE"
+	CodeUnsupportedMediaType = "UNSUPPORTED_MEDIA_TYPE"
+)
+
 type Detail struct {
 	Field  string `json:"field"`
 	Reason string `json:"reason"`
 }
 
 type Error struct {
-	Category Category
-	Code     string
-	Message  string
-	Details  []Detail
+	Category   Category
+	Code       string
+	Message    string
+	Details    []Detail
 	Malformed  bool
 	RetryAfter time.Duration
-	Cause error
+	Cause      error
 }
 
 func (e *Error) Error() string {
@@ -66,6 +71,14 @@ func Malformed(code, message string, details ...Detail) *Error {
 	err := Validation(code, message, details...)
 	err.Malformed = true
 	return err
+}
+
+func PayloadTooLarge(message string) *Error {
+	return Malformed(CodePayloadTooLarge, message)
+}
+
+func UnsupportedMediaType(message string) *Error {
+	return Malformed(CodeUnsupportedMediaType, message)
 }
 
 func Unauthorized(code, message string) *Error {

@@ -15,7 +15,8 @@ import (
 )
 
 const (
-	internalMessage = "Terjadi kesalahan pada server."
+	internalMessage        = "Terjadi kesalahan pada server."
+	payloadTooLargeMessage = "Ukuran permintaan melebihi batas."
 
 	pgUniqueViolation     = "23505"
 	pgExclusionViolation  = "23P01"
@@ -91,6 +92,11 @@ func (ew *ErrorWriter) logCause(ctx context.Context, appErr *apperr.Error, reque
 }
 
 func classify(err error) *apperr.Error {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		return apperr.PayloadTooLarge(payloadTooLargeMessage).WithCause(err)
+	}
+
 	var appErr *apperr.Error
 	if errors.As(err, &appErr) {
 		return appErr
@@ -123,10 +129,7 @@ func mapPgError(pgErr *pgconn.PgError) *apperr.Error {
 func statusFor(appErr *apperr.Error) int {
 	switch appErr.Category {
 	case apperr.CategoryValidation:
-		if appErr.Malformed {
-			return http.StatusBadRequest
-		}
-		return http.StatusUnprocessableEntity
+		return validationStatus(appErr)
 	case apperr.CategoryUnauthorized:
 		return http.StatusUnauthorized
 	case apperr.CategoryForbidden:
@@ -141,5 +144,18 @@ func statusFor(appErr *apperr.Error) int {
 		return http.StatusUnprocessableEntity
 	default:
 		return http.StatusInternalServerError
+	}
+}
+
+func validationStatus(appErr *apperr.Error) int {
+	switch {
+	case appErr.Code == apperr.CodePayloadTooLarge:
+		return http.StatusRequestEntityTooLarge
+	case appErr.Code == apperr.CodeUnsupportedMediaType:
+		return http.StatusUnsupportedMediaType
+	case appErr.Malformed:
+		return http.StatusBadRequest
+	default:
+		return http.StatusUnprocessableEntity
 	}
 }

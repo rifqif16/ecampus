@@ -3,6 +3,7 @@ package server
 import (
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -15,6 +16,11 @@ import (
 var (
 	errRouteNotFound    = apperr.NotFound("ROUTE_NOT_FOUND", "Endpoint tidak ditemukan.")
 	errMalformedRequest = apperr.Malformed("VALIDATION_ERROR", "Permintaan tidak valid.")
+)
+
+const (
+	requestTimeout = 10 * time.Second
+	maxBodyBytes   = 1 << 20
 )
 
 var quietRoutes = []string{"/healthz", "/readyz"}
@@ -32,6 +38,8 @@ func NewRouter(deps Deps) http.Handler {
 	r.Use(httpx.Recover(errWriter))
 	r.Use(httpx.ClientIPMiddleware(httpx.ClientIPHeader))
 	r.Use(httpx.AccessLog(deps.Log, chiRoutePattern, quietRoutes...))
+	r.Use(httpx.Timeout(requestTimeout))
+	r.Use(httpx.MaxBodyBytes(errWriter, maxBodyBytes))
 	r.NotFound(routeNotFound(errWriter))
 	r.MethodNotAllowed(routeNotFound(errWriter))
 
